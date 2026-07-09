@@ -15,19 +15,20 @@ access is approved — budget time for that, don't assume it works first try
 
 1. **AMD Developer Cloud GPU Droplet approved and provisioned** (ROCm
    pre-installed, Docker + GPU passthrough working — verify with `rocm-smi`
-   on the host before touching this compose file at all).
-2. **Accept Gemma's license on Hugging Face** and generate an access token —
-   `google/gemma-3-12b-it` is a gated model; vLLM will fail to download it
-   without a valid `HF_TOKEN`. This is a separate gate from the Fireworks
-   Gemma access issue we hit earlier — don't assume fixing one fixes the
-   other.
+   on the host before touching this compose file at all). **Pending as of
+   July 9.**
+2. ~~Accept Gemma's license on Hugging Face and generate an access token~~ —
+   **done July 9.** Token is in `deploy/.env` (gitignored, never committed).
+   This was a separate gate from the Fireworks Gemma access issue — fixing
+   this one does NOT fix that one; Fireworks access is still pending and on
+   hold until AMD credits are confirmed (see root `CLAUDE.md`).
 3. Docker + Docker Compose installed on the Droplet.
 
 ## Run
 
 ```bash
-export HF_TOKEN=hf_xxx           # from huggingface.co/settings/tokens
 cd classifi/deploy
+cp .env.example .env   # already done locally — fill in real HF_TOKEN if starting fresh
 docker compose up --build
 ```
 
