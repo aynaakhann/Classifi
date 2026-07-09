@@ -1,0 +1,39 @@
+services:
+  # Self-hosted Gemma 3 on AMD, served OpenAI-compatible via vLLM.
+  # Runs ONLY on a machine with ROCm + AMD GPU (the AMD Developer Cloud
+  # Droplet) — this will not start on a laptop without an AMD accelerator.
+  vllm:
+    image: vllm/vllm-openai-rocm:latest
+    command: ["--model", "${VLLM_MODEL:-google/gemma-3-12b-it}"]
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    ipc: host
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+    expose:
+      - "8000"
+
+  api:
+    build:
+      context: ../backend
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_API_KEY=not-needed-for-self-hosted
+      - LLM_MODEL=${VLLM_MODEL:-google/gemma-3-12b-it}
+      - LLM_BASE_URL=http://vllm:8000/v1/chat/completions
+      - ENGINE_LABEL=amd-self-hosted
+    depends_on:
+      - vllm
+
+volumes:
+  huggingface-cache:
