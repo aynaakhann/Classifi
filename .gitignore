@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 .venv/
 *.log
+node_modules/
+dist/
+node-bin/
+temp-clone/
+backend/venv/
