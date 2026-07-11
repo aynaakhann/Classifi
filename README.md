@@ -26,15 +26,13 @@ This is a **hackathon project built for the AMD Developer Hackathon: ACT II** (l
 
 ## Team
 
-**Team Name:** Vizminds
+**Team Name:** Vizminds V2
 
 | Member | Role |
 | --- | --- |
 | Ayna Khan | Team Lead |
 | Syuja Dewa | Team Member |
-| Muneeb Ahmed Khan | Team Member |
 | Abdullah | Team Member |
-| Mehmood Ahmed Khan | Team Member |
 
 ## Problem Statement
 
