@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Plus,
   Zap,
-  Settings,
   ChevronRight,
   X,
   Upload,
@@ -18,7 +17,7 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
-  Tag,
+  GripVertical,
 } from "lucide-react";
 import { ImageWithFallback } from "./components/figma/ImageWithFallback";
 import exampleImage from "../imports/image-2.png";
@@ -53,12 +52,22 @@ interface ClassifyResult {
   alternatives: { label: string; confidence: number }[];
 }
 
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = "http://127.0.0.1:8000";
+const STORAGE_KEY = "classifi:classifiers";
+
+function loadSavedClassifiers(): Classifier[] {
+  if (typeof window === "undefined") return MOCK_CLASSIFIERS;
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (!stored) return MOCK_CLASSIFIERS;
+    return JSON.parse(stored) as Classifier[];
+  } catch {
+    return MOCK_CLASSIFIERS;
+  }
+}
 
 async function runRealClassify(input: string, inputImageUrl: string | null, classifier: Classifier): Promise<ClassifyResult> {
-  const isMock = ["1", "2", "3"].includes(classifier.id);
-  
-  const formattedExamples = classifier.categories.flatMap(cat => 
+  const formattedExamples = classifier.categories.flatMap(cat =>
     cat.examples.map(ex => {
       const isImage = ex.startsWith("[image]");
       let text = null;
@@ -83,25 +92,17 @@ async function runRealClassify(input: string, inputImageUrl: string | null, clas
   const classes = classifier.categories.map(c => c.name);
 
   try {
-    let url = `${BACKEND_URL}/classify`;
-    let payload: any = {};
+    // Send the locally persisted classifier definition with every request.
+    // Backend storage is intentionally in-memory, so a saved backend ID can
+    // become stale whenever the API server restarts.
+    const payload = {
+      classes,
+      examples: formattedExamples,
+      input: inputImageUrl ? null : input,
+      input_image_url: inputImageUrl
+    };
 
-    if (isMock) {
-      payload = {
-        classes,
-        examples: formattedExamples,
-        input: inputImageUrl ? null : input,
-        input_image_url: inputImageUrl
-      };
-    } else {
-      url = `${BACKEND_URL}/classifiers/${classifier.id}/classify`;
-      payload = {
-        input: inputImageUrl ? null : input,
-        input_image_url: inputImageUrl
-      };
-    }
-
-    const res = await fetch(url, {
+    const res = await fetch(`${BACKEND_URL}/classify`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -209,12 +210,12 @@ function SidebarItem({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 text-left relative overflow-hidden ${
-        active
+      className={`w-full min-h-10 flex-none flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 text-left relative overflow-hidden ${active
           ? "text-primary bg-primary/10"
           : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-      }`}
+        }`}
     >
       {active && (
         <>
@@ -310,7 +311,7 @@ function PrimaryButton({
     <button
       onClick={onClick}
       disabled={disabled || loading}
-      className={`inline-flex items-center gap-2 font-semibold rounded-xl bg-primary text-primary-foreground transition-all duration-150 active:scale-[0.98] hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-primary/20 ${sizes[size]} ${className}`}
+      className={`inline-flex items-center gap-2 font-semibold rounded-xl bg-slate-950 text-white transition-all duration-150 active:scale-[0.98] hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-slate-900/20 ${sizes[size]} ${className}`}
     >
       {loading && (
         <span className="flex items-center gap-[3px]">
@@ -451,9 +452,8 @@ function StepBar({ step, total }: { step: number; total: number }) {
       {Array.from({ length: total }).map((_, i) => (
         <div
           key={i}
-          className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-            i < step ? "bg-primary" : i === step ? "bg-primary/40" : "bg-secondary"
-          }`}
+          className={`h-1 flex-1 rounded-full transition-all duration-300 ${i < step ? "bg-primary" : i === step ? "bg-primary/40" : "bg-secondary"
+            }`}
         />
       ))}
     </div>
@@ -498,9 +498,28 @@ function HeroSection({ classifiers, onCreate }: { classifiers: Classifier[]; onC
   const selected = classifiers.find((c) => c.id === selectedId) ?? classifiers[0];
   const { result, inferring, visible } = useLiveClassify(selected, text, 200);
   const [focused, setFocused] = useState(false);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const classifierSuggestions = selected?.categories
+    .flatMap((category) => category.examples)
+    .filter((example) => example.trim() && !example.startsWith("[image]")) ?? [];
+  const fallbackSuggestions = [
+    "This product is amazing!",
+    "I need help with my invoice",
+    "Click here to claim your prize",
+  ];
+  const availableSuggestions = classifierSuggestions.length > 0 ? classifierSuggestions : fallbackSuggestions;
+  const currentSuggestion = availableSuggestions[suggestionIndex % availableSuggestions.length];
+
+  useEffect(() => {
+    setSuggestionIndex(0);
+    const interval = window.setInterval(() => {
+      setSuggestionIndex((current) => (current + 1) % availableSuggestions.length);
+    }, 3500);
+    return () => window.clearInterval(interval);
+  }, [selectedId, availableSuggestions.length]);
 
   return (
-    <div className="relative px-8 pt-10 pb-8 overflow-hidden">
+    <div className="relative px-4 sm:px-6 lg:px-8 pt-20 sm:pt-10 pb-6 sm:pb-8 overflow-hidden">
       {/* Ambient glow orb behind heading */}
       <div
         className="absolute top-0 left-1/3 w-96 h-40 pointer-events-none"
@@ -515,9 +534,9 @@ function HeroSection({ classifiers, onCreate }: { classifiers: Classifier[]; onC
         </div>
 
         {/* Headline + CTA row */}
-        <div className="flex items-end justify-between mb-6 gap-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-4 sm:gap-6">
           <div>
-            <h1 className="text-[32px] font-semibold text-foreground leading-[1.15] tracking-[-0.025em]">
+            <h1 className="text-3xl sm:text-[32px] font-semibold text-foreground leading-[1.15] tracking-[-0.025em]">
               Build a classifier<br />
               <span style={{ background: "linear-gradient(90deg, #6366F1, #8B5CF6)", backgroundClip: "text", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", color: "transparent" }}>
                 in seconds
@@ -534,9 +553,9 @@ function HeroSection({ classifiers, onCreate }: { classifiers: Classifier[]; onC
         {classifiers.length > 0 && (
           <div className="relative">
             <div
-              className="flex items-center w-full rounded-2xl px-5 transition-all duration-250 bg-card"
+              className="flex flex-wrap lg:flex-nowrap items-center w-full rounded-2xl px-4 sm:px-5 py-3 gap-y-2 transition-all duration-250 bg-card"
               style={{
-                height: "56px",
+                minHeight: "56px",
                 border: focused || text.trim()
                   ? "1px solid rgba(99, 102, 241, 0.5)"
                   : "1px solid rgba(34, 43, 61, 1)",
@@ -565,7 +584,7 @@ function HeroSection({ classifiers, onCreate }: { classifiers: Classifier[]; onC
 
               {/* Inline result — slides in from right */}
               <div
-                className="flex-shrink-0 flex items-center gap-2.5 ml-3 transition-all duration-300"
+                className="order-3 sm:order-none w-full sm:w-auto flex-shrink-0 flex items-center gap-2.5 sm:ml-3 transition-all duration-300"
                 style={{ opacity: visible && result ? 1 : 0, transform: visible && result ? "translateX(0)" : "translateX(8px)", pointerEvents: result ? "auto" : "none" }}
               >
                 {result && (
@@ -587,18 +606,19 @@ function HeroSection({ classifiers, onCreate }: { classifiers: Classifier[]; onC
 
               <button
                 type="button"
-                onClick={() => setText("This product is amazing!")}
-                className="hidden sm:inline-flex flex-shrink-0 ml-3 text-[11px] text-muted-foreground/60 hover:text-primary transition-colors"
+                onClick={() => setText(currentSuggestion)}
+                className="order-4 lg:order-none hidden sm:block w-full lg:w-auto lg:max-w-[320px] lg:flex-[0_1_320px] min-w-0 lg:ml-4 text-left lg:text-right whitespace-normal break-words text-[11px] leading-4 text-muted-foreground/60 hover:text-primary transition-colors"
+                title={`Try: ${currentSuggestion}`}
               >
-                Try: “This product is amazing!”
+                Try: “{currentSuggestion}”
               </button>
 
               {/* Classifier picker */}
-              <div className="flex-shrink-0 ml-4 pl-4 h-6 flex items-center border-l border-border">
+              <div className="flex-shrink-0 ml-2 sm:ml-4 pl-2 sm:pl-4 min-h-6 flex items-center border-l border-border max-w-[42%] lg:max-w-[220px]">
                 <select
                   value={selectedId}
                   onChange={(e) => setSelectedId(e.target.value)}
-                  className="bg-transparent text-[11px] text-muted-foreground hover:text-foreground focus:outline-none cursor-pointer transition-colors appearance-none"
+                  className="w-full min-w-0 max-w-full overflow-hidden text-ellipsis bg-transparent text-[10px] xl:text-[11px] text-muted-foreground hover:text-foreground focus:outline-none cursor-pointer transition-colors appearance-none"
                   style={{ backgroundImage: "none" }}
                 >
                   {classifiers.map((c) => (
@@ -647,18 +667,18 @@ function FeaturedClassifierCard({ classifier, onOpen }: { classifier: Classifier
   // Split explanation into reveal-able lines
   const explanationLines = result
     ? (() => {
-        const cat = classifier.categories.find((c) => c.name === result.label);
-        const ex0 = cat?.examples[0];
-        const ex1 = cat?.examples[1];
-        return [
-          `→ Matched category: ${result.label} (${Math.round(result.confidence * 100)}% confidence)`,
-          ex0 ? `→ Semantically close to: "${ex0.slice(0, 36)}${ex0.length > 36 ? "…" : ""}"` : null,
-          ex1 ? `→ Also similar to: "${ex1.slice(0, 32)}${ex1.length > 32 ? "…" : ""}"` : null,
-          result.alternatives.length > 0
-            ? `→ Runner-up: ${result.alternatives[0].label} (${Math.round(result.alternatives[0].confidence * 100)}%)`
-            : null,
-        ].filter(Boolean) as string[];
-      })()
+      const cat = classifier.categories.find((c) => c.name === result.label);
+      const ex0 = cat?.examples[0];
+      const ex1 = cat?.examples[1];
+      return [
+        `→ Matched category: ${result.label} (${Math.round(result.confidence * 100)}% confidence)`,
+        ex0 ? `→ Semantically close to: "${ex0.slice(0, 36)}${ex0.length > 36 ? "…" : ""}"` : null,
+        ex1 ? `→ Also similar to: "${ex1.slice(0, 32)}${ex1.length > 32 ? "…" : ""}"` : null,
+        result.alternatives.length > 0
+          ? `→ Runner-up: ${result.alternatives[0].label} (${Math.round(result.alternatives[0].confidence * 100)}%)`
+          : null,
+      ].filter(Boolean) as string[];
+    })()
     : [];
 
   useEffect(() => {
@@ -863,7 +883,7 @@ function FeaturedClassifierCard({ classifier, onOpen }: { classifier: Classifier
               <div className="flex flex-col gap-1 mt-0.5">
                 {explanationLines.map((line, i) => {
                   const fadeDuration = 200;           // ms — all lines same fade speed
-                  const lineDelay   = i === 0 ? 0 : i === 1 ? 300 : i === 2 ? 400 : 500;
+                  const lineDelay = i === 0 ? 0 : i === 1 ? 300 : i === 2 ? 400 : 500;
                   const shown = visibleLines > i;
                   return (
                     <p
@@ -903,31 +923,27 @@ function SecondaryClassifierCard({ classifier, onOpen, wide }: { classifier: Cla
       onClick={onOpen}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="rounded-2xl p-5 flex flex-col gap-3 cursor-pointer transition-all duration-250"
+      className="group h-48 rounded-3xl p-5 flex flex-col gap-3 cursor-pointer transition-all duration-250"
       style={{
-        background: "linear-gradient(180deg, var(--color-muted) 0%, var(--color-secondary) 100%)",
-        border: hovered ? "1px solid rgba(99, 102, 241, 0.2)" : "1px solid var(--color-border)",
-        boxShadow: hovered ? "0 10px 30px rgba(99, 102, 241, 0.08), 0 4px 16px rgba(0,0,0,0.3)" : "0 2px 12px rgba(0,0,0,0.2)",
-        transform: hovered ? "translateY(-3px) scale(1.01)" : "translateY(0) scale(1)",
+        background: "var(--color-card)",
+        border: hovered ? "1px solid rgba(15, 23, 42, 0.12)" : "1px solid var(--color-border)",
+        boxShadow: hovered ? "0 18px 38px rgba(15, 23, 42, 0.08)" : "0 10px 24px rgba(15, 23, 42, 0.06)",
+        transform: hovered ? "translateY(-2px)" : "none",
         transition: "all 0.2s ease",
       }}
     >
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h3 className="font-semibold text-foreground text-sm leading-tight">{classifier.name}</h3>
           <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
             {classifier.categories.length} classes · {totalExamples} examples
           </p>
         </div>
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200"
-          style={{
-            background: hovered ? "rgba(99, 102, 241, 0.12)" : "rgba(255,255,255,0.03)",
-            border: hovered ? "1px solid rgba(99, 102, 241, 0.2)" : "1px solid var(--color-border)",
-          }}
-        >
-          <Tag size={12} style={{ color: hovered ? "var(--color-primary)" : "var(--color-muted-foreground)" }} />
-        </div>
+        <GripVertical
+          size={16}
+          className="flex-none text-muted-foreground/45 transition-colors group-hover:text-muted-foreground"
+          aria-hidden="true"
+        />
       </div>
 
       {/* Category chips */}
@@ -971,15 +987,42 @@ function SecondaryClassifierCard({ classifier, onOpen, wide }: { classifier: Cla
 
 // ── Dashboard Page ────────────────────────────────────────────────────────────
 
-function DashboardPage({ classifiers, onSelect, onCreate }: { classifiers: Classifier[]; onSelect: (c: Classifier) => void; onCreate: () => void }) {
-  const featured = classifiers[0] ?? null;
-  const rest = classifiers.slice(1);
+function DashboardPage({
+  classifiers,
+  onSelect,
+  onCreate,
+  onReorder,
+}: {
+  classifiers: Classifier[];
+  onSelect: (c: Classifier) => void;
+  onCreate: () => void;
+  onReorder: (classifiers: Classifier[]) => void;
+}) {
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+
+  const moveClassifier = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    const sourceIndex = classifiers.findIndex((classifier) => classifier.id === sourceId);
+    const targetIndex = classifiers.findIndex((classifier) => classifier.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const reordered = [...classifiers];
+    const [moved] = reordered.splice(sourceIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+    onReorder(reordered);
+  };
+
+  const moveByOffset = (classifierId: string, offset: number) => {
+    const sourceIndex = classifiers.findIndex((classifier) => classifier.id === classifierId);
+    const targetIndex = Math.max(0, Math.min(classifiers.length - 1, sourceIndex + offset));
+    if (sourceIndex < 0 || sourceIndex === targetIndex) return;
+    moveClassifier(classifierId, classifiers[targetIndex].id);
+  };
 
   return (
     <div className="flex flex-col h-full">
       <HeroSection classifiers={classifiers} onCreate={onCreate} />
 
-      <div className="flex-1 overflow-y-auto px-8 py-7">
+      <div className="flex-1 px-4 sm:px-6 lg:px-8 py-5 sm:py-7">
         {classifiers.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-4">
             <Sparkles size={36} className="text-primary/30" />
@@ -990,49 +1033,59 @@ function DashboardPage({ classifiers, onSelect, onCreate }: { classifiers: Class
           <div className="flex flex-col gap-6 max-w-5xl mx-auto">
 
             {/* Featured — full width */}
-            {featured && (
-              <FeaturedClassifierCard classifier={featured} onOpen={() => onSelect(featured)} />
-            )}
-
-            {/* Secondary — asymmetric: narrow left, wide right */}
-            {rest.length > 0 && (
-              <div className="grid gap-4" style={{ gridTemplateColumns: rest.length >= 2 ? "5fr 8fr" : "1fr" }}>
-                {rest[0] && (
-                  <SecondaryClassifierCard classifier={rest[0]} onOpen={() => onSelect(rest[0])} />
-                )}
-                {rest[1] ? (
-                  <SecondaryClassifierCard classifier={rest[1]} onOpen={() => onSelect(rest[1])} wide />
-                ) : (
-                  <button
-                    onClick={onCreate}
-                    className="group p-5 flex flex-col items-center justify-center rounded-2xl transition-all duration-200 hover:-translate-y-0.5 cursor-pointer"
-                    style={{ background: "var(--color-muted)", border: "1px dashed var(--color-border)" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(99, 102, 241, 0.25)"; (e.currentTarget as HTMLButtonElement).style.background = "rgba(99, 102, 241, 0.03)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-border)"; (e.currentTarget as HTMLButtonElement).style.background = "var(--color-muted)"; }}
-                  >
-                    <Plus size={16} className="text-muted-foreground group-hover:text-primary mb-2 transition-colors" />
-                    <span className="text-xs font-medium text-muted-foreground group-hover:text-primary transition-colors">New classifier</span>
-                  </button>
-                )}
-                {rest.slice(2).map((c) => (
-                  <SecondaryClassifierCard key={c.id} classifier={c} onOpen={() => onSelect(c)} />
-                ))}
-              </div>
-            )}
-
-            {/* Add more strip */}
-            {rest.length >= 2 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               <button
                 onClick={onCreate}
-                className="group w-full py-3 flex items-center justify-center gap-2 rounded-2xl transition-all duration-200"
-                style={{ background: "transparent", border: "1px dashed var(--color-border)" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(99, 102, 241, 0.2)"; (e.currentTarget as HTMLButtonElement).style.background = "rgba(99, 102, 241, 0.02)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--color-border)"; (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                className="group h-48 p-5 rounded-3xl border border-dashed border-slate-300 bg-slate-50 text-left text-slate-700 hover:border-slate-400 hover:bg-slate-100 transition-all duration-200"
               >
-                <Plus size={12} className="text-muted-foreground group-hover:text-primary transition-colors" />
-                <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors font-medium">Add classifier</span>
+                <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-slate-900 text-white mb-4">
+                  <Plus size={18} />
+                </div>
+                <h3 className="text-base font-semibold">Create a new classifier</h3>
+                <p className="text-sm text-slate-500 mt-2">Add more classifiers and manage them from the dashboard.</p>
               </button>
-            )}
+              {classifiers.map((classifier) => (
+                <div
+                  key={classifier.id}
+                  draggable
+                  tabIndex={0}
+                  aria-label={`${classifier.name}. Draggable classifier card. Use Shift plus arrow keys to reorder.`}
+                  title="Drag to reorder · Shift + arrow keys also work"
+                  onDragStart={(event) => {
+                    setDraggedId(classifier.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", classifier.id);
+                  }}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    if (draggedId) moveClassifier(draggedId, classifier.id);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDraggedId(null);
+                  }}
+                  onDragEnd={() => setDraggedId(null)}
+                  onKeyDown={(event) => {
+                    if (!event.shiftKey) return;
+                    if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+                      event.preventDefault();
+                      moveByOffset(classifier.id, -1);
+                    }
+                    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+                      event.preventDefault();
+                      moveByOffset(classifier.id, 1);
+                    }
+                  }}
+                  className={`rounded-3xl outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 ${draggedId === classifier.id ? "opacity-55" : "opacity-100"}`}
+                >
+                  <SecondaryClassifierCard classifier={classifier} onOpen={() => onSelect(classifier)} />
+                </div>
+              ))}
+            </div>
 
 
           </div>
@@ -1066,7 +1119,7 @@ function CreatePage({
   const canContinue = name.trim().length > 0 && categories.filter((c) => c.trim().length > 0).length >= 2;
 
   return (
-    <div className="p-8 max-w-xl mx-auto">
+    <div className="px-4 py-20 sm:p-8 max-w-xl mx-auto">
       <StepBar step={1} total={3} />
 
       <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground mb-6 flex items-center gap-1 transition-colors">
@@ -1214,14 +1267,14 @@ function ExamplesPage({
   const readyToFinish = categories.every((c) => c.examples.length >= 1);
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="px-4 py-20 sm:p-8 max-w-5xl mx-auto">
       <StepBar step={2} total={3} />
 
       <button onClick={onBack} className="text-xs text-muted-foreground hover:text-foreground mb-6 flex items-center gap-1 transition-colors">
         <ChevronRight size={12} className="rotate-180" /> Back
       </button>
 
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">{classifier.name}</h1>
           <p className="text-sm text-muted-foreground mt-1 font-mono">
@@ -1231,17 +1284,15 @@ function ExamplesPage({
         <div className="flex items-center gap-1 bg-secondary rounded-xl p-1 border border-border">
           <button
             onClick={() => setMode("text")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
-              mode === "text" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${mode === "text" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
           >
             <FileText size={12} /> Text
           </button>
           <button
             onClick={() => setMode("image")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
-              mode === "image" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${mode === "image" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
           >
             <Image size={12} /> Image
           </button>
@@ -1288,11 +1339,10 @@ function ExamplesPage({
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => handleFileDrop(cat.id, e)}
                 onClick={() => fileRefs.current[cat.id]?.click()}
-                className={`h-24 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-150 ${
-                  dragging === cat.id
+                className={`h-24 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-150 ${dragging === cat.id
                     ? "border-primary bg-primary/5"
                     : "border-border hover:border-primary/40 hover:bg-secondary/50"
-                }`}
+                  }`}
               >
                 <Upload size={16} className="text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Drop images or click to upload</span>
@@ -1325,7 +1375,7 @@ function ExamplesPage({
                       <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground flex-shrink-0" />
                     )}
                     <span className="text-xs text-foreground truncate flex-1">
-                      {ex.startsWith("[image]") 
+                      {ex.startsWith("[image]")
                         ? (ex.includes(";data=") ? ex.split(";data=")[0].replace("[image]name=", "") : ex.replace("[image] ", ""))
                         : ex
                       }
@@ -1410,7 +1460,7 @@ function ClassifyPage({ classifier }: { classifier: Classifier }) {
   };
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="px-4 py-20 sm:p-8 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-foreground">{classifier.name}</h1>
         <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -1425,23 +1475,21 @@ function ClassifyPage({ classifier }: { classifier: Classifier }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Input panel */}
-        <GlassCard className="p-6 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
+        <GlassCard className="p-4 sm:p-6 flex flex-col gap-4">
+          <div className="flex flex-col xs:flex-row gap-3 xs:items-center justify-between">
             <h2 className="text-base font-semibold text-foreground">Input</h2>
             <div className="flex items-center gap-1 bg-secondary rounded-xl p-1 border border-border">
               <button
                 onClick={() => { setInputMode("text"); setImageName(null); setImageData(null); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  inputMode === "text" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
-                }`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${inputMode === "text" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                  }`}
               >
                 <FileText size={11} /> Text
               </button>
               <button
                 onClick={() => { setInputMode("image"); setTextInput(""); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  inputMode === "image" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
-                }`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${inputMode === "image" ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                  }`}
               >
                 <Image size={11} /> Image
               </button>
@@ -1463,9 +1511,8 @@ function ClassifyPage({ classifier }: { classifier: Classifier }) {
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
               onClick={() => fileRef.current?.click()}
-              className={`h-32 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${
-                dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
-              }`}
+              className={`h-32 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${dragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                }`}
             >
               {imageName ? (
                 <>
@@ -1633,7 +1680,7 @@ function APIPage({ classifier }: { classifier: Classifier }) {
   -d '${JSON.stringify({ input: "Your input text here" })}'`;
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
+    <div className="px-4 py-20 sm:p-8 max-w-3xl mx-auto">
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-1">
           <h1 className="text-2xl font-semibold text-foreground">API Access</h1>
@@ -1657,7 +1704,7 @@ function APIPage({ classifier }: { classifier: Classifier }) {
               {copied === "endpoint" ? "Copied" : "Copy"}
             </button>
           </div>
-          <code className="text-sm font-mono text-primary">{endpoint}</code>
+          <code className="block overflow-x-auto whitespace-nowrap text-sm font-mono text-primary">{endpoint}</code>
         </GlassCard>
 
         {/* Request */}
@@ -1771,7 +1818,7 @@ function GPUMetricsPanel() {
   const isSelfHosted = metrics?.available && metrics?.engine === "amd-self-hosted";
 
   return (
-    <div className="mt-4 pt-4 border-t border-border/40">
+    <div className="mt-4 flex-none pt-4 border-t border-border/40">
       <p className="text-[10px] font-mono text-muted-foreground/70 uppercase tracking-wider mb-2 px-1">
         AMD GPU METRICS
       </p>
@@ -1823,19 +1870,49 @@ function GPUMetricsPanel() {
 
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
-  const [classifiers, setClassifiers] = useState<Classifier[]>(MOCK_CLASSIFIERS);
+  const [classifiers, setClassifiers] = useState<Classifier[]>(() => loadSavedClassifiers());
   const [activeClassifier, setActiveClassifier] = useState<Classifier | null>(null);
   const [draftClassifier, setDraftClassifier] = useState<Classifier | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window === "undefined" ? true : window.innerWidth >= 1024
+  );
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window === "undefined" ? false : window.innerWidth < 1024
+  );
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(classifiers));
+    } catch {
+      // ignore storage failures
+    }
+  }, [classifiers]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1023px)");
+    const handleViewportChange = (event: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobile(event.matches);
+      setSidebarOpen(!event.matches);
+    };
+    handleViewportChange(media);
+    media.addEventListener("change", handleViewportChange);
+    return () => media.removeEventListener("change", handleViewportChange);
+  }, []);
+
+  const closeMobileSidebar = () => {
+    if (isMobile) setSidebarOpen(false);
+  };
 
   const openClassifier = (c: Classifier) => {
     setActiveClassifier(c);
     setPage("classify");
+    closeMobileSidebar();
   };
 
   const startCreate = () => {
     setDraftClassifier(null);
     setPage("create");
+    closeMobileSidebar();
   };
 
   const handleCreateContinue = (name: string, cats: string[]) => {
@@ -1852,7 +1929,7 @@ export default function App() {
   };
 
   const handleExamplesFinish = async (updated: Classifier) => {
-    const formattedExamples = updated.categories.flatMap(cat => 
+    const formattedExamples = updated.categories.flatMap(cat =>
       cat.examples.map(ex => {
         const isImage = ex.startsWith("[image]");
         let text = null;
@@ -1896,7 +1973,7 @@ export default function App() {
       }
 
       const data = await res.json();
-      
+
       const published: Classifier = {
         ...updated,
         id: data.id
@@ -1904,7 +1981,9 @@ export default function App() {
 
       setClassifiers((prev) => {
         const exists = prev.find((c) => c.id === updated.id);
-        return exists ? prev.map((c) => (c.id === updated.id ? published : c)) : [published, ...prev];
+        const next = exists ? prev.map((c) => (c.id === updated.id ? published : c)) : [published, ...prev];
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        return next;
       });
       setActiveClassifier(published);
       toast.success(`${published.name} published — ready to classify!`, { id: toastId });
@@ -1915,7 +1994,9 @@ export default function App() {
       
       setClassifiers((prev) => {
         const exists = prev.find((c) => c.id === updated.id);
-        return exists ? prev.map((c) => (c.id === updated.id ? updated : c)) : [updated, ...prev];
+        const next = exists ? prev.map((c) => (c.id === updated.id ? updated : c)) : [updated, ...prev];
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        return next;
       });
       setActiveClassifier(updated);
       setPage("classify");
@@ -1927,42 +2008,48 @@ export default function App() {
   ];
 
   const ensureActiveClassifier = () => {
-    const classifier = activeClassifier ?? classifiers[0];
-    if (!classifier) {
-      toast.info("Create a classifier first");
+    if (!activeClassifier) {
+      toast.info(classifiers.length > 0 ? "Select a classifier first" : "Create a classifier first");
       return null;
     }
-    setActiveClassifier(classifier);
-    return classifier;
+    return activeClassifier;
   };
 
   return (
     <div
-      className="flex h-screen overflow-hidden bg-background"
+      className="flex min-h-[100dvh] h-[100dvh] overflow-hidden bg-background"
       style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
     >
       <Toaster
-        theme="dark"
+        theme="light"
         position="top-right"
         toastOptions={{
           className: "bg-card border border-border text-foreground",
         }}
       />
 
-      {/* Sidebar */}
+      {isMobile && sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       <aside
-        className={`flex-shrink-0 flex flex-col transition-all duration-300 border-r border-border/60 bg-sidebar ${
-          sidebarOpen ? "w-60" : "w-0 overflow-hidden"
+        className={`fixed inset-y-0 left-0 z-50 flex flex-shrink-0 flex-col border-r border-border/60 bg-sidebar shadow-2xl transition-[transform,width] duration-300 lg:relative lg:z-auto lg:shadow-none ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0 lg:overflow-hidden"
         }`}
+        style={{ width: isMobile ? "min(19rem, 86vw)" : sidebarOpen ? "15rem" : "0" }}
       >
-        {/* Logo — 20px padding */}
         <div className="px-5 pt-5 pb-0 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div
               className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)", boxShadow: "0 0 12px rgba(99, 102, 241, 0.35)" }}
+              style={{ background: "linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)" }}
             >
-              <Zap size={13} className="text-background" />
+              <Zap size={13} className="text-primary-foreground" />
             </div>
             <span className="text-[15px] font-bold text-foreground tracking-tight">Classifi</span>
           </div>
@@ -1972,41 +2059,69 @@ export default function App() {
         </div>
 
         {/* 32px gap then nav */}
-        <nav className="flex-1 px-5 mt-8 flex flex-col gap-0.5">
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-2 px-1">Main</p>
-          {navItems.map((item) => (
-            <SidebarItem
-              key={item.id}
-              icon={item.icon}
-              label={item.label}
-              active={page === item.id}
-              onClick={() => setPage(item.id)}
-            />
-          ))}
+        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 mt-8 pb-5 flex flex-col gap-0.5">
+    <p className="flex-none text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-2 px-1">Main</p>
+    {navItems.map((item) => (
+      <SidebarItem
+        key={item.id}
+        icon={item.icon}
+        label={item.label}
+        active={page === item.id}
+        onClick={() => { setPage(item.id); closeMobileSidebar(); }}
+      />
+    ))}
 
-          <button
+          <SidebarItem
+            icon={Plus}
+            label="New Classifier"
+            active={page === "create" || page === "examples"}
             onClick={startCreate}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all duration-150 text-left"
-          >
-            <Plus size={15} className="text-muted-foreground" />
-            <span>New Classifier</span>
-          </button>
+          />
 
-          <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mt-8 mb-2 px-1">Quick actions</p>
-          <button
-            onClick={() => { const c = ensureActiveClassifier(); if (c) setPage("classify"); }}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-150 text-left"
-          >
-            <Zap size={15} className="text-primary" /> Test Input
-          </button>
-          {/* Active classifier context */}
-          {activeClassifier && (
-            <div className="mt-4 pt-4 border-t border-border/40">
-              <p className="text-[10px] font-mono text-muted-foreground/70 uppercase tracking-wider mb-1.5 px-1">Active</p>
-              <div className="px-3 py-2 rounded-lg" style={{ background: "rgba(99, 102, 241, 0.04)", border: "1px solid rgba(99, 102, 241, 0.12)" }}>
-                <p className="text-xs font-medium text-foreground truncate">{activeClassifier.name}</p>
-                <p className="text-[10px] text-primary font-mono mt-0.5">
-                  {activeClassifier.categories.length} classes
+          <p className="flex-none text-[10px] font-mono text-muted-foreground uppercase tracking-wider mt-8 mb-2 px-1">Quick actions</p>
+          <SidebarItem
+            icon={Zap}
+            label="Test Input"
+            active={page === "classify" || page === "api"}
+            onClick={() => {
+              const classifier = ensureActiveClassifier();
+              if (classifier) {
+                setPage("classify");
+                closeMobileSidebar();
+              }
+            }}
+          />
+          {classifiers.length > 0 && (
+            <div className="mt-4 flex-none pt-4 border-t border-border/40">
+              <label htmlFor="sidebar-classifier" className="block text-[10px] font-mono text-muted-foreground/70 uppercase tracking-wider mb-1.5 px-1">
+                Active classifier
+              </label>
+              <div className="relative rounded-xl border border-primary/20 bg-primary/[0.04] transition-colors hover:border-primary/40 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/10">
+                <select
+                  id="sidebar-classifier"
+                  value={activeClassifier?.id ?? ""}
+                  onChange={(event) => {
+                    if (!event.target.value) {
+                      setActiveClassifier(null);
+                      setPage("dashboard");
+                      closeMobileSidebar();
+                      return;
+                    }
+                    const selected = classifiers.find((classifier) => classifier.id === event.target.value);
+                    if (selected) openClassifier(selected);
+                  }}
+                  className="block w-full min-w-0 cursor-pointer appearance-none overflow-hidden text-ellipsis bg-transparent py-2.5 pl-3 pr-8 text-[10px] leading-4 font-medium text-foreground outline-none sm:text-[11px]"
+                  aria-label="Change active classifier"
+                  title={activeClassifier?.name ?? "No classifier selected"}
+                >
+                  <option value="">No classifier selected</option>
+                  {classifiers.map((classifier) => (
+                    <option key={classifier.id} value={classifier.id}>{classifier.name}</option>
+                  ))}
+                </select>
+                <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <p className="pointer-events-none break-words px-3 pb-2 text-[9px] leading-4 text-primary font-mono">
+                  {activeClassifier ? `${activeClassifier.categories.length} classes · ready to test` : "No classifier selected"}
                 </p>
               </div>
             </div>
@@ -2015,22 +2130,22 @@ export default function App() {
         </nav>
 
         {/* Bottom — Settings + User */}
-        <div className="px-5 py-5 flex flex-col gap-1 border-t border-border/40">
-          <SidebarItem icon={Settings} label="Settings" active={false} onClick={() => toast.info("Settings coming soon")} />
+        <div className="flex-shrink-0 px-5 py-3 flex flex-col gap-1 border-t border-border/40">
         </div>
       </aside>
 
       {/* Toggle sidebar */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="fixed left-0 top-4 z-50 w-5 h-8 bg-secondary border border-border border-l-0 rounded-r-lg flex items-center justify-center text-muted-foreground hover:text-primary transition-all"
-        style={{ left: sidebarOpen ? "240px" : "0px" }}
+        aria-label={sidebarOpen ? "Close navigation" : "Open navigation"}
+        className={`fixed top-4 z-[60] h-10 bg-secondary border border-border rounded-r-lg flex items-center justify-center text-muted-foreground hover:text-primary transition-all ${sidebarOpen ? "w-8" : "w-10"}`}
+        style={{ left: sidebarOpen ? (isMobile ? "min(19rem, 86vw)" : "240px") : "0px" }}
       >
         <ChevronRight size={12} className={`transition-transform duration-300 ${sidebarOpen ? "rotate-180" : ""}`} />
       </button>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto relative">
+      <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden relative">
         {/* Subtle mesh gradient overlay */}
         <div
           className="pointer-events-none fixed inset-0 opacity-30"
@@ -2039,7 +2154,7 @@ export default function App() {
           }}
         />
         <div
-          className="pointer-events-none fixed bottom-0 left-60 right-0 h-40 opacity-30"
+          className="pointer-events-none fixed bottom-0 left-0 lg:left-60 right-0 h-40 opacity-30"
           style={{
             backgroundImage: "radial-gradient(rgba(5,178,220,0.45) 1px, transparent 1px)",
             backgroundSize: "14px 14px",
@@ -2050,7 +2165,7 @@ export default function App() {
         {page === "dashboard" && (
           <button
             onClick={startCreate}
-            className="absolute right-8 top-7 z-20 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_0_22px_rgba(5,178,220,0.45)] transition-all hover:-translate-y-0.5 hover:bg-sky-300 active:scale-[0.98]"
+            className="hidden sm:inline-flex absolute right-6 lg:right-8 top-7 z-20 items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_0_22px_rgba(5,178,220,0.45)] transition-all hover:-translate-y-0.5 hover:bg-sky-300 active:scale-[0.98]"
           >
             <Plus size={14} /> New Classifier
           </button>
@@ -2062,6 +2177,7 @@ export default function App() {
               classifiers={classifiers}
               onSelect={openClassifier}
               onCreate={startCreate}
+              onReorder={setClassifiers}
             />
           )}
           {page === "create" && (
