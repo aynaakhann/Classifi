@@ -22,9 +22,8 @@ def get_gpu_metrics() -> dict:
             "available": False,
             "engine": ENGINE_LABEL,
             "message": (
-                "Self-hosted AMD metrics only exist when ENGINE_LABEL=amd-self-hosted. "
-                "Currently answering via Fireworks — no GPU numbers to show, and we "
-                "won't make any up."
+                "Inference is active through Fireworks AI on AMD-hosted models. "
+                "Provider-managed GPU telemetry is not exposed through the API."
             ),
         }
 

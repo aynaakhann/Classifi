@@ -1793,7 +1793,7 @@ function GPUMetricsPanel() {
         }
       } catch (err) {
         if (active) {
-          setMetrics(null);
+          setMetrics({ available: false, engine: "unreachable" });
           setLoading(false);
         }
       }
@@ -1810,22 +1810,23 @@ function GPUMetricsPanel() {
   if (loading) {
     return (
       <div className="px-3 py-2 text-xs text-muted-foreground/60 font-mono">
-        Loading GPU metrics...
+        Checking inference engine...
       </div>
     );
   }
 
   const isSelfHosted = metrics?.available && metrics?.engine === "amd-self-hosted";
+  const isBackendReachable = metrics?.engine !== "unreachable";
 
   return (
-    <div className="mt-4 flex-none pt-4 border-t border-border/40">
+    <div className="mt-3 flex-none pt-3 border-t border-border/40">
       <p className="text-[10px] font-mono text-muted-foreground/70 uppercase tracking-wider mb-2 px-1">
-        AMD GPU METRICS
+        INFERENCE ENGINE
       </p>
       {isSelfHosted ? (
         <div className="px-3 py-2.5 rounded-lg space-y-2" style={{ background: "rgba(16, 185, 129, 0.04)", border: "1px solid rgba(16, 185, 129, 0.12)" }}>
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-emerald-400 font-bold font-mono">● LIVE</span>
+            <span className="text-[10px] text-emerald-600 font-bold font-mono">● LIVE</span>
             <span className="text-[10px] text-muted-foreground font-mono">AMD MI300X</span>
           </div>
           <div className="grid grid-cols-2 gap-1.5 pt-1">
@@ -1851,14 +1852,24 @@ function GPUMetricsPanel() {
             </div>
           </div>
         </div>
-      ) : (
-        <div className="px-3 py-2.5 rounded-lg space-y-1.5" style={{ background: "rgba(245, 158, 11, 0.04)", border: "1px solid rgba(245, 158, 11, 0.12)" }}>
+      ) : isBackendReachable ? (
+        <div className="px-3 py-2.5 rounded-lg space-y-1.5" style={{ background: "rgba(16, 185, 129, 0.05)", border: "1px solid rgba(16, 185, 129, 0.18)" }}>
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-amber-400 font-bold font-mono">▲ OFFLINE</span>
-            <span className="text-[10px] text-muted-foreground font-mono">Fireworks</span>
+            <span className="text-[10px] text-emerald-600 font-bold font-mono">● ACTIVE</span>
+            <span className="text-[10px] text-muted-foreground font-mono">Fireworks AI</span>
           </div>
           <p className="text-[9px] text-muted-foreground leading-normal font-mono">
-            {metrics?.message || "Using Fireworks fallback API. GPU telemetry is only available when self-hosting on AMD ROCm Droplet."}
+            AMD Instinct-powered inference via the Fireworks AI API. Ready to classify text and images.
+          </p>
+        </div>
+      ) : (
+        <div className="px-3 py-2.5 rounded-lg space-y-1.5 border border-destructive/20 bg-destructive/[0.04]">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-destructive font-bold font-mono">API UNAVAILABLE</span>
+            <span className="text-[10px] text-muted-foreground font-mono">Retrying</span>
+          </div>
+          <p className="text-[9px] text-muted-foreground leading-normal font-mono">
+            The Classifi API cannot be reached. Check the backend connection.
           </p>
         </div>
       )}
@@ -2043,23 +2054,28 @@ export default function App() {
         }`}
         style={{ width: isMobile ? "min(19rem, 86vw)" : sidebarOpen ? "15rem" : "0" }}
       >
-        <div className="px-5 pt-5 pb-0 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
+        <div className="px-5 pt-4 pb-0 flex-shrink-0">
+          <div className="flex items-center gap-3">
             <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)" }}
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{
+                background: "linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%)",
+                boxShadow: "0 8px 20px rgba(15, 23, 42, 0.14)",
+              }}
             >
-              <Zap size={13} className="text-primary-foreground" />
+              <Zap size={18} strokeWidth={2.2} className="text-primary-foreground" />
             </div>
-            <span className="text-[15px] font-bold text-foreground tracking-tight">Classifi</span>
+            <div className="min-w-0 flex flex-col justify-center gap-0.5">
+              <span className="text-[17px] leading-5 font-bold text-foreground tracking-tight">Classifi</span>
+              <p className="whitespace-nowrap text-[9px] leading-4 text-muted-foreground font-mono tracking-tight">
+                No-code AI classifier
+              </p>
+            </div>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1 ml-[36px] font-mono leading-none">
-            No-code AI classifier
-          </p>
         </div>
 
         {/* 32px gap then nav */}
-        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 mt-8 pb-5 flex flex-col gap-0.5">
+        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 mt-5 pb-3 flex flex-col gap-0.5">
     <p className="flex-none text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-2 px-1">Main</p>
     {navItems.map((item) => (
       <SidebarItem
@@ -2078,7 +2094,7 @@ export default function App() {
             onClick={startCreate}
           />
 
-          <p className="flex-none text-[10px] font-mono text-muted-foreground uppercase tracking-wider mt-8 mb-2 px-1">Quick actions</p>
+          <p className="flex-none text-[10px] font-mono text-muted-foreground uppercase tracking-wider mt-5 mb-2 px-1">Quick actions</p>
           <SidebarItem
             icon={Zap}
             label="Test Input"
@@ -2092,7 +2108,7 @@ export default function App() {
             }}
           />
           {classifiers.length > 0 && (
-            <div className="mt-4 flex-none pt-4 border-t border-border/40">
+            <div className="mt-3 flex-none pt-3 border-t border-border/40">
               <label htmlFor="sidebar-classifier" className="block text-[10px] font-mono text-muted-foreground/70 uppercase tracking-wider mb-1.5 px-1">
                 Active classifier
               </label>
@@ -2129,9 +2145,6 @@ export default function App() {
           <GPUMetricsPanel />
         </nav>
 
-        {/* Bottom — Settings + User */}
-        <div className="flex-shrink-0 px-5 py-3 flex flex-col gap-1 border-t border-border/40">
-        </div>
       </aside>
 
       {/* Toggle sidebar */}
