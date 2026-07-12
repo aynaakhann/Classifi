@@ -149,12 +149,13 @@ Create your `.env` file from the example:
 cp .env.example .env
 ```
 
-Add your `FIREWORKS_API_KEY` (or configure your self-hosted vLLM endpoint URL):
+Add your `LLM_API_KEY` (or configure your self-hosted vLLM endpoint URL):
 
 ```text
-FIREWORKS_API_KEY=your-api-key
-FIREWORKS_MODEL=accounts/fireworks/models/gemma-3-12b-it
-ENGINE_LABEL=amd-self-hosted
+LLM_API_KEY=your-api-key
+LLM_MODEL=accounts/fireworks/models/kimi-k2p6
+LLM_BASE_URL=https://api.fireworks.ai/inference/v1/chat/completions
+ENGINE_LABEL=fireworks-fallback
 ```
 
 ### 3. Start the Backend
@@ -176,6 +177,35 @@ npm run dev
 ```
 
 The application will be running locally at `http://localhost:5173`.
+
+## Deploy to Vercel
+
+Deploy this repository as two Vercel projects from the same GitHub repository.
+
+### 1. Deploy the backend
+
+1. In Vercel, choose **Add New > Project** and import this repository.
+2. Set **Root Directory** to `backend` and deploy it as a Python project.
+3. Add `LLM_API_KEY` under **Settings > Environment Variables**. The optional
+   `LLM_MODEL`, `LLM_BASE_URL`, and `ENGINE_LABEL` values are documented in
+   `backend/.env.example`.
+4. Deploy, then verify `https://<backend-domain>/health` returns status `ok`.
+
+### 2. Deploy the frontend
+
+1. Import the same repository again as a second Vercel project.
+2. Set **Root Directory** to `frontend`; its `vercel.json` supplies the Vite
+   build settings.
+3. Add `VITE_BACKEND_URL=https://<backend-domain>` under **Environment
+   Variables**. Do not include a trailing slash.
+4. Deploy the frontend and run a sample classification from its public URL.
+
+When the backend domain changes, update `VITE_BACKEND_URL` in the frontend
+project and redeploy the frontend.
+
+Classifier exports are currently held in server memory. They can disappear when
+a serverless instance restarts or when requests reach another instance; use a
+persistent database before treating exported classifier URLs as durable storage.
 
 ## Demo Test Scenarios
 

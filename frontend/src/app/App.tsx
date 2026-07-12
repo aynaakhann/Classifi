@@ -52,7 +52,8 @@ interface ClassifyResult {
   alternatives: { label: string; confidence: number }[];
 }
 
-const BACKEND_URL = "http://127.0.0.1:8000";
+// Set VITE_BACKEND_URL to the standalone backend deployment in Vercel.
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const STORAGE_KEY = "classifi:classifiers";
 
 function loadSavedClassifiers(): Classifier[] {

@@ -9,11 +9,11 @@ natural-language explanation.
 ```bash
 pip install -r requirements.txt
 cp .env.example .env
-# put your real FIREWORKS_API_KEY in .env
+# put your real LLM_API_KEY in .env
 uvicorn app.main:app --reload
 ```
 
-`FIREWORKS_MODEL` currently defaults to `kimi-k2p6` — confirmed working on the
+`LLM_MODEL` currently defaults to `accounts/fireworks/models/kimi-k2p6` — confirmed working on the
 team's Fireworks account for **both text and image** classification (unlike
 `gpt-oss-120b`, which is text-only and can't be used for the image path). Swap
 it to `accounts/fireworks/models/gemma-3-12b-it` once Gemma access is enabled
